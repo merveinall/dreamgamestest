@@ -71,15 +71,14 @@ pipeline {
                 - -c
               args:
                 - |
-                  mkdir -p /bin /usr/bin
-                  /busybox --install -s /bin || true
-                  ln -sf /busybox/nohup /usr/bin/nohup || true
-                  exec /busybox/cat
+                  mkdir -p /home/jenkins/agent/busybox-bin
+                  /busybox --install -s /home/jenkins/agent/busybox-bin
+                  exec /home/jenkins/agent/busybox-bin/sleep 999999
               tty: true
               workingDir: /home/jenkins/agent
               env:
                 - name: PATH
-                  value: /bin:/usr/bin:/busybox:/kaniko:/usr/local/sbin:/usr/local/bin:/usr/sbin:/sbin
+                  value: /home/jenkins/agent/busybox-bin:/kaniko:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
         '''
                 }
             }
@@ -87,7 +86,7 @@ pipeline {
             steps {
                 unstash 'source-for-kaniko'
         
-                container(name: 'kaniko', shell: '/bin/sh') {
+                container(name: 'kaniko', shell: '/home/jenkins/agent/busybox-bin/sh') {
                     withCredentials([usernamePassword(
                         credentialsId: "${REGISTRY_CREDS_ID}",
                         usernameVariable: 'DOCKER_USER',
@@ -96,22 +95,27 @@ pipeline {
                         sh '''
                             set -e
         
-                            echo "=== Kaniko container script started ==="
-                            echo "Workspace: $WORKSPACE"
+                            echo "=== Shell test ==="
+                            which sh
+                            which cp
+                            which sleep
+                            which base64
+                            which tr
+                            which mkdir
                             pwd
                             ls -la
         
-                            echo "=== Checking app directory ==="
+                            echo "=== App directory ==="
                             ls -la app
         
-                            echo "=== Preparing Docker config ==="
+                            echo "=== Preparing Docker config for Kaniko ==="
                             mkdir -p /kaniko/.docker
         
                             AUTH=$(printf "%s:%s" "$DOCKER_USER" "$DOCKER_PASS" | base64 | tr -d '\\n')
         
                             printf '{"auths":{"https://index.docker.io/v1/":{"auth":"%s"}}}' "$AUTH" > /kaniko/.docker/config.json
         
-                            echo "=== Copying Dockerfile into app context ==="
+                            echo "=== Copy Dockerfile into app context ==="
                             cp Dockerfile app/Dockerfile
         
                             echo "=== Starting Kaniko build and push ==="
