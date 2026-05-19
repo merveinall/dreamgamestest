@@ -39,7 +39,7 @@ spec:
 
       containers:
         - name: sample-java-app
-          image: merveinal1/sample-java-app:{{ image_tag }}
+          image: "merveinal1/sample-java-app:{{ image_tag }}"
           ports:
             - name: http
               containerPort: 9001
