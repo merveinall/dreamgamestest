@@ -24,16 +24,6 @@ pipeline {
             }
         }
 
-        stage('Pin Image Tag in Manifest') {
-            // Stamp the exact tag into the deployment manifest before Ansible picks it up.
-            steps {
-                sh """
-                    sed -i 's|image: ${REGISTRY}/${IMAGE_NAME}:.*|image: ${REGISTRY}/${IMAGE_NAME}:${params.IMAGE_TAG}|' \
-                        kubernetes/apps/deployment.yaml
-                """
-            }
-        }
-
         stage('Apply Manifests via Ansible') {
             steps {
                 sh """
