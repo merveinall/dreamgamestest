@@ -144,7 +144,7 @@ spec:
 
         stage('Trigger Deploy') {
             steps {
-                build job: 'jenkins.deploy',
+                build job: 'dreamgames-deploy',
                     parameters: [
                         string(name: 'IMAGE_TAG', value: env.IMAGE_TAG)
                     ],
