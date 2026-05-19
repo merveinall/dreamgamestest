@@ -2,10 +2,11 @@
 # Applies Kubernetes manifests for sample-java-app from the control-plane node.
 # Requires: pip install kubernetes  (kubernetes.core collection)
 - name: Deploy sample-java-app to Kubernetes
-  hosts: k8s_control_plane
+  hosts: localhost
+  connection: local
   gather_facts: false
   vars:
-    kubeconfig: /etc/kubernetes/admin.conf
+    kubeconfig: "{{ lookup('env', 'KUBECONFIG') }}"f
     manifest_dir: "{{ playbook_dir }}/../kubernetes/apps"
     image_tag: latest
 
