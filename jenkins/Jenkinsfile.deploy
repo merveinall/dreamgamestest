@@ -10,7 +10,8 @@ spec:
   serviceAccountName: jenkins
   containers:
     - name: deploy-tools
-      image: alpine:3.20
+      image: merveinal1/jenkins-deploy-tools:1.0.0
+      imagePullPolicy: IfNotPresent
       command:
         - cat
       tty: true
@@ -33,29 +34,13 @@ spec:
     }
 
     stages {
-        stage('Install Tools') {
+        stage('Check Tools') {
             steps {
                 sh '''
-                    set -e
-
-                    echo "=== Installing deploy tools ==="
-
-                    apk add --no-cache \
-                      bash \
-                      curl \
-                      openssh-client \
-                      python3 \
-                      py3-pip \
-                      py3-kubernetes \
-                      ansible \
-                      kubectl
-
-                    echo "=== Installing Ansible Kubernetes collection ==="
-                    ansible-galaxy collection install kubernetes.core
-
-                    echo "=== Tool versions ==="
                     ansible-playbook --version
                     kubectl version --client
+                    curl --version
+                    python3 --version
                 '''
             }
         }
