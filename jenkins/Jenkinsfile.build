@@ -16,30 +16,45 @@ pipeline {
     stages {
         stage('Checkout') {
             steps {
-                checkout scm
+                checkout scm                 // dreamgamestest -> Dockerfile burada
+            }
+        }
+
+        // ↓↓↓ YENİ STAGE — sample-java-app'i app/ altına klonla
+        stage('Checkout app source') {
+            steps {
+                dir('app') {
+                    git url: 'https://github.com/SampleJavaApp/app.git',
+                        branch: 'main'
+                }
             }
         }
 
         stage('Unit Test') {
             steps {
-                sh 'mvn test'
+                dir('app') {                 // ← dir eklendi
+                    sh 'mvn test'
+                }
             }
             post {
                 always {
-                    junit 'target/surefire-reports/*.xml'
+                    junit 'app/target/surefire-reports/*.xml'   // ← path başına 'app/'
                 }
             }
         }
 
         stage('Build JAR') {
             steps {
-                sh 'mvn clean package -DskipTests'
+                dir('app') {                 // ← dir eklendi
+                    sh 'mvn clean package -DskipTests'
+                }
             }
         }
 
         stage('Build Docker Image') {
             steps {
-                sh "docker build -t ${FULL_IMAGE} ."
+                // Dockerfile = dreamgamestest kökünde, kod = ./app/
+                sh "docker build -f Dockerfile -t ${FULL_IMAGE} ./app"
             }
         }
 
