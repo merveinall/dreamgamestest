@@ -8,7 +8,6 @@
   vars:
     kubeconfig: "{{ lookup('env', 'KUBECONFIG') }}"
     manifest_dir: "{{ playbook_dir }}/../kubernetes/apps"
-    image_tag: latest
 
   tasks:
     - name: Ensure apps namespace exists
