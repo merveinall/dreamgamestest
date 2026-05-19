@@ -1,6 +1,9 @@
 pipeline {
     agent any
 
+    options {
+        skipDefaultCheckout(true)
+    }
     tools {
         maven 'Maven3'
     }
@@ -55,6 +58,7 @@ pipeline {
         stage('Build & Push Image') {
             agent {
                 kubernetes {
+                    cloud 'kubernetes'
                     yaml '''
 apiVersion: v1
 kind: Pod
@@ -63,8 +67,21 @@ spec:
     - name: kaniko
       image: gcr.io/kaniko-project/executor:debug
       command:
-        - /busybox/cat
+        - /busybox/sh
+        - -c
+      args:
+        - |
+          mkdir -p /bin /usr/bin
+          ln -sf /busybox/sh /bin/sh || true
+          ln -sf /busybox/cat /bin/cat || true
+          ln -sf /busybox/chmod /bin/chmod || true
+          ln -sf /busybox/mkdir /bin/mkdir || true
+          ln -sf /busybox/nohup /usr/bin/nohup || true
+          exec /busybox/cat
       tty: true
+      env:
+        - name: PATH
+          value: /busybox:/kaniko:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 '''
                 }
             }
@@ -79,29 +96,35 @@ spec:
                         passwordVariable: 'DOCKER_PASS'
                     )]) {
                         sh '''
-                            set +x
+                            set -e
 
+                            echo "=== Kaniko container içinde script başladı ==="
+                            echo "Workspace: $WORKSPACE"
+                            pwd
+                            ls -la
+        
+                            echo "=== app klasörü kontrol ==="
+                            ls -la app
+        
+                            echo "=== Docker config hazırlanıyor ==="
                             mkdir -p /kaniko/.docker
-
+        
                             AUTH=$(printf "%s:%s" "$DOCKER_USER" "$DOCKER_PASS" | base64 | tr -d '\\n')
-
-                            cat > /kaniko/.docker/config.json <<EOF
-{
-  "auths": {
-    "https://index.docker.io/v1/": {
-      "auth": "$AUTH"
-    }
-  }
-}
-EOF
-
+        
+                            printf '{"auths":{"https://index.docker.io/v1/":{"auth":"%s"}}}' "$AUTH" > /kaniko/.docker/config.json
+        
+                            echo "=== Dockerfile app context içine kopyalanıyor ==="
                             cp Dockerfile app/Dockerfile
-
+        
+                            echo "=== Kaniko build/push başlıyor ==="
                             /kaniko/executor \
                               --context=dir://$WORKSPACE/app \
                               --dockerfile=$WORKSPACE/app/Dockerfile \
                               --destination=$REGISTRY/$IMAGE_NAME:$BUILD_NUMBER \
-                              --destination=$REGISTRY/$IMAGE_NAME:latest
+                              --destination=$REGISTRY/$IMAGE_NAME:latest \
+                              --verbosity=info
+        
+                            echo "=== Kaniko build/push tamamlandı ==="
                         '''
                     }
                 }
