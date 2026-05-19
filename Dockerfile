@@ -5,6 +5,9 @@ WORKDIR /app
 # Copy dependency manifest first to exploit layer caching
 COPY mvnw pom.xml ./
 COPY .mvn/ .mvn/
+
+RUN chmod +x mvnw
+
 RUN ./mvnw dependency:go-offline -q
 
 # Now copy source and build; cache above is reused unless pom.xml changes
