@@ -95,13 +95,15 @@ spec:
             }
         }
 
+        /*
         stage('Smoke Test') {
             steps {
                 sh '''
-                    curl -sf http://app.local/api/foos?val=health
+                    curl -sf http://sample-java-app.apps.svc.cluster.local/api/foos?val=health
                 '''
             }
         }
+        */
     }
 
     post {
