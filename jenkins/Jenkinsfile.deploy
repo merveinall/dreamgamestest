@@ -60,6 +60,40 @@ spec:
             }
         }
 
+        stage('Prepare kubeconfig') {
+            steps {
+                sh '''
+                    set -e
+        
+                    SA_DIR=/var/run/secrets/kubernetes.io/serviceaccount
+                    KUBE_SERVER="https://${KUBERNETES_SERVICE_HOST}:${KUBERNETES_SERVICE_PORT}"
+                    TOKEN=$(cat ${SA_DIR}/token)
+                    CA_CERT=${SA_DIR}/ca.crt
+        
+                    kubectl config set-cluster in-cluster \
+                      --server="${KUBE_SERVER}" \
+                      --certificate-authority="${CA_CERT}" \
+                      --embed-certs=true \
+                      --kubeconfig="${WORKSPACE}/kubeconfig"
+        
+                    kubectl config set-credentials jenkins \
+                      --token="${TOKEN}" \
+                      --kubeconfig="${WORKSPACE}/kubeconfig"
+        
+                    kubectl config set-context in-cluster \
+                      --cluster=in-cluster \
+                      --user=jenkins \
+                      --namespace=apps \
+                      --kubeconfig="${WORKSPACE}/kubeconfig"
+        
+                    kubectl config use-context in-cluster \
+                      --kubeconfig="${WORKSPACE}/kubeconfig"
+        
+                    kubectl --kubeconfig="${WORKSPACE}/kubeconfig" get ns
+                '''
+            }
+        }
+
         stage('Checkout') {
             steps {
                 checkout scm
@@ -69,6 +103,7 @@ spec:
         stage('Apply Manifests via Ansible') {
             steps {
                 sh """
+                    KUBECONFIG="${WORKSPACE}/kubeconfig" \
                     ansible-playbook ansible/deploy-playbook.yaml \
                         -i ansible/inventory.ini \
                         -e "image_tag=${params.IMAGE_TAG}"
@@ -79,7 +114,7 @@ spec:
         stage('Wait for Rollout') {
             steps {
                 sh '''
-                    kubectl rollout status deployment/sample-java-app \
+                    kubectl --kubeconfig="${WORKSPACE}/kubeconfig" rollout status deployment/sample-java-app \
                         -n apps --timeout=300s
                 '''
             }
@@ -97,12 +132,12 @@ spec:
     post {
         failure {
             sh '''
-                kubectl rollout undo deployment/sample-java-app -n apps || true
+                kubectl --kubeconfig="${WORKSPACE}/kubeconfig" rollout undo deployment/sample-java-app -n apps || true
             '''
             echo 'Deployment failed — rollback triggered.'
         }
 
-        always {
+        cleanup {
             cleanWs()
         }
     }
