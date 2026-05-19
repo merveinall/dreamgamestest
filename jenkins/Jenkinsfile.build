@@ -16,62 +16,94 @@ pipeline {
     stages {
         stage('Checkout') {
             steps {
-                checkout scm                 // dreamgamestest -> Dockerfile burada
+                checkout scm
             }
         }
 
-        // ↓↓↓ YENİ STAGE — sample-java-app'i app/ altına klonla
         stage('Checkout app source') {
             steps {
                 dir('app') {
                     git url: 'https://github.com/SampleJavaApp/app.git',
                         branch: 'main'
                 }
+
+                stash name: 'source-for-kaniko', includes: 'Dockerfile,app/**'
             }
         }
 
         stage('Unit Test') {
             steps {
-                dir('app') {                 // ← dir eklendi
+                dir('app') {
                     sh 'mvn test'
                 }
             }
             post {
                 always {
-                    junit 'app/target/surefire-reports/*.xml'   // ← path başına 'app/'
+                    junit 'app/target/surefire-reports/*.xml'
                 }
             }
         }
 
         stage('Build JAR') {
             steps {
-                dir('app') {                 // ← dir eklendi
+                dir('app') {
                     sh 'mvn clean package -DskipTests'
                 }
             }
         }
 
-        stage('Build Docker Image') {
-            steps {
-                // Dockerfile = dreamgamestest kökünde, kod = ./app/
-                sh "docker build -f Dockerfile -t ${FULL_IMAGE} ./app"
+        stage('Build & Push Image') {
+            agent {
+                kubernetes {
+                    yaml '''
+apiVersion: v1
+kind: Pod
+spec:
+  containers:
+    - name: kaniko
+      image: gcr.io/kaniko-project/executor:debug
+      command:
+        - /busybox/cat
+      tty: true
+'''
+                }
             }
-        }
 
-        stage('Push to Registry') {
             steps {
-                withCredentials([usernamePassword(
-                    credentialsId: "${REGISTRY_CREDS_ID}",
-                    usernameVariable: 'DOCKER_USER',
-                    passwordVariable: 'DOCKER_PASS'
-                )]) {
-                    sh """
-                        echo "\${DOCKER_PASS}" | docker login -u "\${DOCKER_USER}" --password-stdin
-                        docker push ${FULL_IMAGE}
-                        docker tag  ${FULL_IMAGE} ${REGISTRY}/${IMAGE_NAME}:latest
-                        docker push ${REGISTRY}/${IMAGE_NAME}:latest
-                        docker logout
-                    """
+                unstash 'source-for-kaniko'
+
+                container(name: 'kaniko', shell: '/busybox/sh') {
+                    withCredentials([usernamePassword(
+                        credentialsId: "${REGISTRY_CREDS_ID}",
+                        usernameVariable: 'DOCKER_USER',
+                        passwordVariable: 'DOCKER_PASS'
+                    )]) {
+                        sh '''
+                            set +x
+
+                            mkdir -p /kaniko/.docker
+
+                            AUTH=$(printf "%s:%s" "$DOCKER_USER" "$DOCKER_PASS" | base64 | tr -d '\\n')
+
+                            cat > /kaniko/.docker/config.json <<EOF
+{
+  "auths": {
+    "https://index.docker.io/v1/": {
+      "auth": "$AUTH"
+    }
+  }
+}
+EOF
+
+                            cp Dockerfile app/Dockerfile
+
+                            /kaniko/executor \
+                              --context=dir://$WORKSPACE/app \
+                              --dockerfile=$WORKSPACE/app/Dockerfile \
+                              --destination=$REGISTRY/$IMAGE_NAME:$BUILD_NUMBER \
+                              --destination=$REGISTRY/$IMAGE_NAME:latest
+                        '''
+                    }
                 }
             }
         }
@@ -79,11 +111,10 @@ pipeline {
 
     post {
         always {
-            sh "docker rmi ${FULL_IMAGE} ${REGISTRY}/${IMAGE_NAME}:latest || true"
             cleanWs()
         }
         success {
-            echo "Image ${FULL_IMAGE} pushed successfully."
+            echo "Image ${FULL_IMAGE} and ${REGISTRY}/${IMAGE_NAME}:latest pushed successfully."
         }
         failure {
             echo "Build failed — image was NOT pushed."
