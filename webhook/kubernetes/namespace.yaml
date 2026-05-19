@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: webhook-system
+  labels:
+    # Exempt the webhook's own namespace so it never validates itself
+    webhook.dreamgames.io/skip: "true"

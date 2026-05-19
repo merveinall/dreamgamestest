@@ -1,0 +1,14 @@
+# Jenkins home directory — persists jobs, config, and plugin data across restarts.
+# WaitForFirstConsumer ensures the PV is created on the same node as the pod (node-2).
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: jenkins-data
+  namespace: jenkins
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 20Gi

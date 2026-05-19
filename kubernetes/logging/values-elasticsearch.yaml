@@ -1,0 +1,68 @@
+# Elasticsearch Helm values — single-node, Elasticsearch 8.x.
+# Chart: elastic/elasticsearch
+#
+# Security disabled for local cluster. Fluent Bit connects without auth.
+# Deploy with: bash scripts/09-deploy-logging.sh
+
+tolerations:
+  - key: dedicated
+    operator: Equal
+    value: jenkins
+    effect: NoSchedule
+
+nodeSelector:
+  kubernetes.io/hostname: node-2
+  
+clusterName: "dreamgames-logs"
+nodeGroup: "master"
+
+replicas: 1
+minimumMasterNodes: 1
+
+esJavaOpts: "-Xmx512m -Xms512m"
+
+resources:
+  requests:
+    cpu: "200m"
+    memory: "600Mi"
+  limits:
+    cpu: "1000m"
+    memory: "1300Mi"
+
+esConfig:
+  elasticsearch.yml: |
+    discovery.type: single-node
+    xpack.security.enabled: false
+    xpack.security.http.ssl.enabled: false
+    xpack.security.transport.ssl.enabled: false
+    xpack.monitoring.collection.enabled: false
+
+# Use plain HTTP (no TLS); also fixes the readiness probe scheme
+protocol: http
+
+# DO NOT set secret.enabled: false — the built-in readiness probe script
+# checks for ELASTIC_PASSWORD env var even when security is disabled.
+# The chart injects this var from the auto-created secret; without the
+# secret the env var is missing and every probe exits with code 1.
+
+persistence:
+  enabled: true
+  storageClass: local-path
+  size: 10Gi
+
+# Expose under monitoring.local/elasticsearch via nginx ingress.
+# rewrite-target strips /elasticsearch before forwarding to ES.
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+  hosts:
+    - host: monitoring.local
+      paths:
+        - path: /elasticsearch(/|$)(.*)
+          pathType: ImplementationSpecific
+
+service:
+  type: ClusterIP
+  port: 9200

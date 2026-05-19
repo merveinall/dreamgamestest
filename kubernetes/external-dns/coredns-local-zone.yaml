@@ -1,0 +1,50 @@
+# AŞAMA 2: CoreDNS'e local. zone ekle (etcd plugin ile).
+# DNS çalıştıktan SONRA ve etcd ClusterIP öğrenildikten sonra uygula.
+#
+# 1. etcd ClusterIP'sini öğren:
+#      kubectl get svc etcd-external-dns -n external-dns \
+#        -o jsonpath='{.spec.clusterIP}'
+#
+# 2. Aşağıdaki <ETCD_CLUSTER_IP>'yi değiştir:
+#      sed -i 's/<ETCD_CLUSTER_IP>/10.96.x.x/' \
+#        kubernetes/external-dns/coredns-local-zone.yaml
+#
+# 3. Apply et:
+#      kubectl apply -f kubernetes/external-dns/coredns-local-zone.yaml
+#      kubectl rollout restart deployment/coredns -n kube-system
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: coredns
+  namespace: kube-system
+data:
+  Corefile: |
+    .:53 {
+        errors
+        health {
+           lameduck 5s
+        }
+        ready
+        kubernetes cluster.local in-addr.arpa ip6.arpa {
+           pods insecure
+           fallthrough in-addr.arpa ip6.arpa
+           ttl 30
+        }
+        prometheus :9153
+        forward . /etc/resolv.conf {
+           max_concurrent 1000
+        }
+        cache 30
+        loop
+        reload
+        loadbalance
+    }
+    local.:53 {
+        errors
+        cache 30
+        etcd {
+            stubzones
+            path /skydns
+            endpoint http://<ETCD_CLUSTER_IP>:2379
+        }
+    }

@@ -1,0 +1,15 @@
+# MetalLB Helm values
+# Chart: metallb/metallb
+# helm repo add metallb https://metallb.github.io/metallb
+# After install, apply kubernetes/metallb/ipaddresspool.yaml to configure the IP pool.
+controller:
+  enabled: true
+  logLevel: info
+
+speaker:
+  enabled: true
+  logLevel: info
+
+# FRR mode (optional, for BGP) — disabled for simple L2 mode
+frr:
+  enabled: false

@@ -1,0 +1,31 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: resource-webhook
+  namespace: webhook-system
+---
+# The webhook only needs to read its own ConfigMap.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: resource-webhook
+  namespace: webhook-system
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    resourceNames: ["webhook-namespaces"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: resource-webhook
+  namespace: webhook-system
+subjects:
+  - kind: ServiceAccount
+    name: resource-webhook
+    namespace: webhook-system
+roleRef:
+  kind: Role
+  name: resource-webhook
+  apiGroup: rbac.authorization.k8s.io

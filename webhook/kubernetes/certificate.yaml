@@ -1,0 +1,22 @@
+# cert-manager issues a self-signed TLS cert for the webhook server.
+# cert-manager must be installed in the cluster before applying this.
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: selfsigned-issuer
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: resource-webhook-tls
+  namespace: webhook-system
+spec:
+  secretName: resource-webhook-tls
+  dnsNames:
+    - resource-webhook.webhook-system.svc
+    - resource-webhook.webhook-system.svc.cluster.local
+  issuerRef:
+    name: selfsigned-issuer
+    kind: ClusterIssuer

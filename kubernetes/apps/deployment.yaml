@@ -1,0 +1,86 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sample-java-app
+  namespace: apps
+  labels:
+    app: sample-java-app
+    version: v1.0
+spec:
+  replicas: 4
+  selector:
+    matchLabels:
+      app: sample-java-app
+  # maxUnavailable: 0 ensures no capacity loss during rollouts
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app: sample-java-app
+        version: v1.0
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+
+      # Spread pods evenly across the two worker nodes; block scheduling if skew would exceed 1
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app: sample-java-app
+
+      containers:
+        - name: sample-java-app
+          image: merveinal1/sample-java-app:v1.0
+          ports:
+            - name: http
+              containerPort: 9001
+
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+
+          # App exposes /api/foos — a quick GET confirms the Spring context loaded.
+          livenessProbe:
+            httpGet:
+              path: /api/foos?val=health
+              port: 9001
+            initialDelaySeconds: 30
+            periodSeconds: 15
+            failureThreshold: 3
+
+          readinessProbe:
+            httpGet:
+              path: /api/foos?val=health
+              port: 9001
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            failureThreshold: 3
+
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+
+          # Spring Boot needs a writable temp dir even with readOnlyRootFilesystem
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+
+      volumes:
+        - name: tmp
+          emptyDir: {}

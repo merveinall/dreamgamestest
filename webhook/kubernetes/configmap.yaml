@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: webhook-namespaces
+  namespace: webhook-system
+data:
+  # Comma-separated list of namespaces where the webhook enforces resource requests.
+  # Use "*" to apply to every namespace (except those excluded by the VWC namespaceSelector).
+  enabled-namespaces: "apps,default"

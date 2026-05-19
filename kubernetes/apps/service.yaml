@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: sample-java-app
+  namespace: apps
+  annotations:
+    # ExternalDNS will create an A record for this hostname automatically.
+    external-dns.alpha.kubernetes.io/hostname: app.local
+spec:
+  selector:
+    app: sample-java-app
+  ports:
+    - name: http
+      port: 80
+      targetPort: 9001
+      protocol: TCP
+  type: ClusterIP

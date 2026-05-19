@@ -1,0 +1,19 @@
+# IDE & local tooling
+.idea/
+.vscode/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+target/
+*.class
+*.jar
+*.war
+
+# Secrets & local overrides
+*.env
+*.local
+secrets/

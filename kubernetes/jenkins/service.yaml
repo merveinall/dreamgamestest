@@ -1,0 +1,32 @@
+# HTTP service — MetalLB assigns a LoadBalancer IP; ExternalDNS creates jenkins.local.
+apiVersion: v1
+kind: Service
+metadata:
+  name: jenkins
+  namespace: jenkins
+  annotations:
+    external-dns.alpha.kubernetes.io/hostname: jenkins.local
+spec:
+  selector:
+    app: jenkins
+  type: LoadBalancer
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8080
+---
+# Headless service for agent JNLP tunnel — used by Jenkins Kubernetes cloud plugin.
+apiVersion: v1
+kind: Service
+metadata:
+  name: jenkins-agent
+  namespace: jenkins
+spec:
+  selector:
+    app: jenkins
+  type: ClusterIP
+  clusterIP: None
+  ports:
+    - name: agent
+      port: 50000
+      targetPort: 50000

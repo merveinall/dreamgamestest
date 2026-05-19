@@ -1,0 +1,75 @@
+pipeline {
+    agent any
+
+    parameters {
+        string(
+            name: 'IMAGE_TAG',
+            defaultValue: 'latest',
+            description: 'Docker image tag to deploy (use the build number from the build pipeline)'
+        )
+    }
+
+    environment {
+        REGISTRY   = 'merveinal1'
+        IMAGE_NAME = 'sample-java-app'
+        // Jenkins credential that holds the kubeconfig file
+        KUBECONFIG = credentials('kubeconfig')
+        ANSIBLE_HOST_KEY_CHECKING = 'False'
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Pin Image Tag in Manifest') {
+            // Stamp the exact tag into the deployment manifest before Ansible picks it up.
+            steps {
+                sh """
+                    sed -i 's|image: ${REGISTRY}/${IMAGE_NAME}:.*|image: ${REGISTRY}/${IMAGE_NAME}:${params.IMAGE_TAG}|' \
+                        kubernetes/apps/deployment.yaml
+                """
+            }
+        }
+
+        stage('Apply Manifests via Ansible') {
+            steps {
+                sh """
+                    ansible-playbook ansible/deploy-playbook.yaml \
+                        -i ansible/inventory.ini \
+                        -e "image_tag=${params.IMAGE_TAG}"
+                """
+            }
+        }
+
+        stage('Wait for Rollout') {
+            steps {
+                sh """
+                    kubectl --kubeconfig=\${KUBECONFIG} rollout status deployment/sample-java-app \
+                        -n apps --timeout=300s
+                """
+            }
+        }
+
+        stage('Smoke Test') {
+            steps {
+                sh 'curl -sf http://app.local/api/foos?val=health'
+            }
+        }
+    }
+
+    post {
+        failure {
+            // Roll back to the previous ReplicaSet on any stage failure.
+            sh """
+                kubectl --kubeconfig=\${KUBECONFIG} rollout undo deployment/sample-java-app -n apps || true
+            """
+            echo 'Deployment failed — rollback triggered.'
+        }
+        always {
+            cleanWs()
+        }
+    }
+}

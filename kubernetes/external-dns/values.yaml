@@ -1,0 +1,50 @@
+# ExternalDNS Helm values
+# Chart: kubernetes-sigs/external-dns
+# helm repo add external-dns https://kubernetes-sigs.github.io/external-dns/
+#
+# DNS strategy: RFC2136 (BIND-compatible dynamic DNS update).
+# Assumption: a BIND-compatible DNS server is accessible at the Vagrant host
+# gateway 10.50.0.1 on port 53. If no BIND server exists, see README for
+# the CoreDNS alternative approach.
+#
+# Example annotation to trigger DNS record creation on a Service:
+#   metadata:
+#     annotations:
+#       external-dns.alpha.kubernetes.io/hostname: myservice.local
+
+provider: rfc2136
+
+rfc2136:
+  host: "10.50.0.1"
+  port: 53
+  zone: "local."
+  minTTL: "60s"
+  # TSIG authentication — replace with actual key name/secret or remove if
+  # the BIND zone allows unauthenticated dynamic updates from the pod CIDR.
+  tsigKeyname: "externaldns-key"
+  tsigSecret: "<RFC2136_TSIG_SECRET>"
+  tsigSecretAlg: hmac-sha256
+
+domainFilters:
+  - "local."
+
+txtOwnerId: "k8s-dreamgames"
+txtPrefix: "edns-"
+
+# upsert-only: never removes DNS records — safe default for local clusters.
+policy: upsert-only
+
+serviceAccount:
+  create: false
+  name: external-dns
+
+logLevel: info
+logFormat: text
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 200m
+    memory: 128Mi

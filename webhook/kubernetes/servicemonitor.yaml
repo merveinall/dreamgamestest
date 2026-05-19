@@ -1,0 +1,18 @@
+# Prometheus Operator ServiceMonitor — scrapes /metrics on port 8080 every 30s.
+# Requires kube-prometheus-stack (or prometheus-operator) to be installed.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: resource-webhook
+  namespace: webhook-system
+  labels:
+    release: kube-prometheus-stack
+spec:
+  selector:
+    matchLabels:
+      app: resource-webhook
+  endpoints:
+    - port: metrics
+      path: /metrics
+      interval: 30s
+      scheme: http

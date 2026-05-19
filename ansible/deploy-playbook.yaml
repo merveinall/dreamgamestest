@@ -1,0 +1,59 @@
+---
+# Applies Kubernetes manifests for sample-java-app from the control-plane node.
+# Requires: pip install kubernetes  (kubernetes.core collection)
+- name: Deploy sample-java-app to Kubernetes
+  hosts: k8s_control_plane
+  gather_facts: false
+  vars:
+    kubeconfig: /etc/kubernetes/admin.conf
+    manifest_dir: "{{ playbook_dir }}/../kubernetes/apps"
+    image_tag: latest
+
+  tasks:
+    - name: Ensure apps namespace exists
+      kubernetes.core.k8s:
+        kubeconfig: "{{ kubeconfig }}"
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Namespace
+          metadata:
+            name: apps
+
+    - name: Apply Deployment (image tag {{ image_tag }})
+      kubernetes.core.k8s:
+        kubeconfig: "{{ kubeconfig }}"
+        state: present
+        definition: "{{ lookup('template', manifest_dir + '/deployment.yaml') | from_yaml }}"
+
+    - name: Apply Service
+      kubernetes.core.k8s:
+        kubeconfig: "{{ kubeconfig }}"
+        state: present
+        src: "{{ manifest_dir }}/service.yaml"
+
+    - name: Apply Ingress
+      kubernetes.core.k8s:
+        kubeconfig: "{{ kubeconfig }}"
+        state: present
+        src: "{{ manifest_dir }}/ingress.yaml"
+
+    - name: Wait for Deployment to become Available
+      kubernetes.core.k8s_info:
+        kubeconfig: "{{ kubeconfig }}"
+        kind: Deployment
+        name: sample-java-app
+        namespace: apps
+        wait: true
+        wait_condition:
+          type: Available
+          status: "True"
+        wait_timeout: 300
+      register: deploy_info
+
+    - name: Show ready replicas
+      debug:
+        msg: >-
+          Deployment ready —
+          {{ deploy_info.resources[0].status.readyReplicas }} /
+          {{ deploy_info.resources[0].status.replicas }} replicas up.

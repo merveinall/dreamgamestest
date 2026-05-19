@@ -1,0 +1,129 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jenkins
+  namespace: jenkins
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: jenkins
+  # Recreate avoids two Jenkins instances fighting over the PVC.
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: jenkins
+    spec:
+      serviceAccountName: jenkins
+
+      # Pinned exclusively to node-2 (10.50.0.12) as required.
+      nodeSelector:
+        kubernetes.io/hostname: node-2
+      tolerations:
+        - key: dedicated
+          operator: Equal
+          value: jenkins
+          effect: NoSchedule
+
+      securityContext:
+        fsGroup: 1000
+        runAsUser: 1000
+
+      initContainers:
+        # Ensure /var/jenkins_home is owned by the jenkins user (uid 1000)
+        # before the main container starts — required on first PVC mount.
+        - name: init-permissions
+          image: busybox
+          command: ["sh", "-c", "chown -R 1000:1000 /var/jenkins_home"]
+          securityContext:
+            runAsUser: 0
+          volumeMounts:
+            - name: jenkins-data
+              mountPath: /var/jenkins_home
+
+        # Pre-install plugins so JCasC Kubernetes cloud config works on first boot.
+        - name: install-plugins
+          image: jenkins/jenkins:lts-jdk21
+          command:
+            - sh
+            - -c
+            - |
+              jenkins-plugin-cli --plugins \
+                kubernetes:latest \
+                workflow-aggregator:latest \
+                git:latest \
+                configuration-as-code:latest \
+                credentials-binding:latest \
+                github-branch-source:latest \
+                docker-workflow:latest
+          volumeMounts:
+            - name: jenkins-data
+              mountPath: /var/jenkins_home
+
+      containers:
+        - name: jenkins
+          image: jenkins/jenkins:lts-jdk21
+          ports:
+            - name: http
+              containerPort: 8080
+            - name: agent
+              containerPort: 50000
+
+          env:
+            # Skip the setup wizard — JCasC handles initial configuration.
+            - name: JAVA_OPTS
+              value: "-Djenkins.install.runSetupWizard=false -Xmx1g"
+            - name: CASC_JENKINS_CONFIG
+              value: /var/jenkins_config/jenkins.yaml
+            # Injected into JCasC via ${JENKINS_ADMIN_USER} / ${JENKINS_ADMIN_PASSWORD}
+            - name: JENKINS_ADMIN_USER
+              valueFrom:
+                secretKeyRef:
+                  name: jenkins-admin-secret
+                  key: jenkins-admin-user
+            - name: JENKINS_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: jenkins-admin-secret
+                  key: jenkins-admin-password
+
+          volumeMounts:
+            - name: jenkins-data
+              mountPath: /var/jenkins_home
+            - name: jenkins-config
+              mountPath: /var/jenkins_config
+              readOnly: true
+
+          livenessProbe:
+            httpGet:
+              path: /login
+              port: 8080
+            initialDelaySeconds: 120
+            periodSeconds: 20
+            failureThreshold: 5
+
+          readinessProbe:
+            httpGet:
+              path: /login
+              port: 8080
+            initialDelaySeconds: 90
+            periodSeconds: 10
+            failureThreshold: 5
+
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "768Mi"
+            limits:
+              cpu: "1000m"
+              memory: "1536Mi"
+
+      volumes:
+        - name: jenkins-data
+          persistentVolumeClaim:
+            claimName: jenkins-data
+        - name: jenkins-config
+          configMap:
+            name: jenkins-jcasc

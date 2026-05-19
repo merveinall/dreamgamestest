@@ -1,0 +1,77 @@
+pipeline {
+    agent any
+
+    tools {
+        maven 'Maven3'
+    }
+
+    environment {
+        REGISTRY          = 'merveinal1'
+        IMAGE_NAME        = 'sample-java-app'
+        IMAGE_TAG         = "${env.BUILD_NUMBER}"
+        FULL_IMAGE        = "${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}"
+        REGISTRY_CREDS_ID = 'dockerhub-credentials'
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Unit Test') {
+            steps {
+                sh 'mvn test'
+            }
+            post {
+                always {
+                    junit 'target/surefire-reports/*.xml'
+                }
+            }
+        }
+
+        stage('Build JAR') {
+            steps {
+                sh 'mvn clean package -DskipTests'
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                sh "docker build -t ${FULL_IMAGE} ."
+            }
+        }
+
+        stage('Push to Registry') {
+            steps {
+                withCredentials([usernamePassword(
+                    credentialsId: "${REGISTRY_CREDS_ID}",
+                    usernameVariable: 'DOCKER_USER',
+                    passwordVariable: 'DOCKER_PASS'
+                )]) {
+                    sh """
+                        echo "\${DOCKER_PASS}" | docker login -u "\${DOCKER_USER}" --password-stdin
+                        docker push ${FULL_IMAGE}
+                        docker tag  ${FULL_IMAGE} ${REGISTRY}/${IMAGE_NAME}:latest
+                        docker push ${REGISTRY}/${IMAGE_NAME}:latest
+                        docker logout
+                    """
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            sh "docker rmi ${FULL_IMAGE} ${REGISTRY}/${IMAGE_NAME}:latest || true"
+            cleanWs()
+        }
+        success {
+            echo "Image ${FULL_IMAGE} pushed successfully."
+        }
+        failure {
+            echo "Build failed — image was NOT pushed."
+        }
+    }
+}

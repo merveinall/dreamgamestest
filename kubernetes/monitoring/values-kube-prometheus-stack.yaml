@@ -1,0 +1,134 @@
+# kube-prometheus-stack Helm values
+# Chart: prometheus-community/kube-prometheus-stack
+#
+# Single hostname: monitoring.local
+#   /prometheus    → Prometheus UI
+#   /alertmanager  → AlertManager UI
+#   /grafana       → Grafana UI  (admin / admin123)
+#
+# Deploy with: bash scripts/08-deploy-monitoring.sh
+
+# ── Prometheus ────────────────────────────────────────────────────────────────
+prometheus:
+  enabled: true
+  prometheusSpec:
+    retention: "15d"
+    externalUrl: "http://monitoring.local/prometheus"
+    routePrefix: "/prometheus"
+    # Pick up PrometheusRules and ServiceMonitors from all namespaces
+    ruleSelectorNilUsesHelmValues: false
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: local-path
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 10Gi
+    resources:
+      requests:
+        cpu: 200m
+        memory: 300Mi
+      limits:
+        cpu: 500m
+        memory: 800Mi
+  ingress:
+    enabled: true
+    ingressClassName: nginx
+    hosts:
+      - monitoring.local
+    paths:
+      - /prometheus
+    pathType: Prefix
+
+# ── AlertManager ──────────────────────────────────────────────────────────────
+alertmanager:
+  enabled: true
+  config:
+    global:
+      resolve_timeout: 5m
+    route:
+      group_by: ['namespace', 'alertname']
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 3h
+      receiver: 'dreamgames-default'
+    receivers:
+      - name: 'dreamgames-default'
+  alertmanagerSpec:
+    externalUrl: "http://monitoring.local/alertmanager"
+    routePrefix: "/alertmanager"
+    storage:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: local-path
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 2Gi
+  ingress:
+    enabled: true
+    ingressClassName: nginx
+    hosts:
+      - monitoring.local
+    paths:
+      - /alertmanager
+    pathType: Prefix
+
+# ── Grafana ───────────────────────────────────────────────────────────────────
+grafana:
+  enabled: true
+  adminPassword: "admin123"
+
+  "grafana.ini":
+    server:
+      root_url: "http://monitoring.local/grafana"
+      serve_from_sub_path: true
+
+  # Auto-load ConfigMaps with label grafana_dashboard: "1"
+  sidecar:
+    dashboards:
+      enabled: true
+      label: grafana_dashboard
+      labelValue: "1"
+      searchNamespace: ALL
+    datasources:
+      enabled: true
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 300m
+      memory: 256Mi
+
+  ingress:
+    enabled: true
+    ingressClassName: nginx
+    hosts:
+      - monitoring.local
+    path: /grafana
+    pathType: Prefix
+
+# ── Exporters & Operators ─────────────────────────────────────────────────────
+kubeStateMetrics:
+  enabled: true
+
+nodeExporter:
+  enabled: true
+
+prometheusOperator:
+  enabled: true
+
+defaultRules:
+  create: true
+  rules:
+    alertmanager: true
+    etcd: false
+    kubernetesApps: true
+    kubernetesResources: true
+    kubernetesStorage: true
+    node: true

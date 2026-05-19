@@ -1,0 +1,65 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: external-dns
+  namespace: external-dns
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: external-dns
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: external-dns
+    spec:
+      serviceAccountName: external-dns
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        fsGroup: 65534
+
+      # Co-locate with etcd on master to avoid cross-node gRPC issues.
+      nodeSelector:
+        node-role.kubernetes.io/control-plane: ""
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
+
+      initContainers:
+        - name: wait-for-etcd
+          image: busybox
+          command:
+            - sh
+            - -c
+            - |
+              until wget -qO- http://etcd-external-dns.external-dns.svc.cluster.local:2379/health 2>/dev/null; do
+                echo "waiting for etcd..."; sleep 2
+              done
+
+      containers:
+        - name: external-dns
+          image: registry.k8s.io/external-dns/external-dns:v0.14.2
+          args:
+            - --source=service
+            - --source=ingress
+            - --provider=coredns
+            - --coredns-prefix=/skydns/
+            - --domain-filter=local.
+            - --txt-owner-id=k8s-dreamgames
+            - --policy=upsert-only
+            - --log-level=info
+          env:
+            - name: ETCD_URLS
+              value: "http://etcd-external-dns.external-dns.svc.cluster.local:2379"
+
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi

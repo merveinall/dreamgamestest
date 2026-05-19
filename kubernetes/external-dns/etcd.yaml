@@ -1,0 +1,72 @@
+# Lightweight single-node etcd used as the CoreDNS backend for ExternalDNS.
+# ExternalDNS writes records here; CoreDNS reads via the etcd plugin.
+apiVersion: v1
+kind: Service
+metadata:
+  name: etcd-external-dns
+  namespace: external-dns
+spec:
+  selector:
+    app: etcd-external-dns
+  ports:
+    - name: client
+      port: 2379
+      targetPort: 2379
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: etcd-external-dns
+  namespace: external-dns
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: etcd-external-dns
+  template:
+    metadata:
+      labels:
+        app: etcd-external-dns
+    spec:
+      # Pin to master so the image is already present — no pull needed.
+      nodeSelector:
+        node-role.kubernetes.io/control-plane: ""
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
+
+      containers:
+        - name: etcd
+          # Same image kubeadm already pulled for the control-plane etcd pod.
+          # Verify the exact tag on your cluster:
+          #   kubectl get pod etcd-k8s-master -n kube-system \
+          #     -o jsonpath='{.spec.containers[0].image}'
+          image: registry.k8s.io/etcd:3.5.10-0
+          command:
+            - etcd
+            - --listen-client-urls=http://0.0.0.0:2379
+            - --advertise-client-urls=http://etcd-external-dns.external-dns.svc.cluster.local:2379
+            - --data-dir=/var/lib/etcd-external-dns
+          ports:
+            - containerPort: 2379
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 2379
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/etcd-external-dns
+      volumes:
+        - name: data
+          emptyDir: {}

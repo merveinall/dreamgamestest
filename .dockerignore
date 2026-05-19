@@ -1,0 +1,12 @@
+target/
+.git/
+*.md
+Vagrantfile
+docs/
+kubernetes/
+gitops/
+cluster/
+*.iml
+.idea/
+*.log
+.DS_Store
