@@ -6,7 +6,7 @@
   connection: local
   gather_facts: false
   vars:
-    kubeconfig: "{{ lookup('env', 'KUBECONFIG') }}"f
+    kubeconfig: "{{ lookup('env', 'KUBECONFIG') }}"
     manifest_dir: "{{ playbook_dir }}/../kubernetes/apps"
     image_tag: latest
 
