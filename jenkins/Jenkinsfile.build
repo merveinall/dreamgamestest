@@ -60,36 +60,34 @@ pipeline {
                 kubernetes {
                     cloud 'kubernetes'
                     yaml '''
-apiVersion: v1
-kind: Pod
-spec:
-  containers:
-    - name: kaniko
-      image: gcr.io/kaniko-project/executor:debug
-      command:
-        - /busybox/sh
-        - -c
-      args:
-        - |
-          mkdir -p /bin /usr/bin
-          ln -sf /busybox/sh /bin/sh || true
-          ln -sf /busybox/cat /bin/cat || true
-          ln -sf /busybox/chmod /bin/chmod || true
-          ln -sf /busybox/mkdir /bin/mkdir || true
-          ln -sf /busybox/nohup /usr/bin/nohup || true
-          exec /busybox/cat
-      tty: true
-      env:
-        - name: PATH
-          value: /busybox:/kaniko:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-'''
+        apiVersion: v1
+        kind: Pod
+        spec:
+          containers:
+            - name: kaniko
+              image: gcr.io/kaniko-project/executor:debug
+              command:
+                - /busybox/sh
+                - -c
+              args:
+                - |
+                  mkdir -p /bin /usr/bin
+                  /busybox --install -s /bin || true
+                  ln -sf /busybox/nohup /usr/bin/nohup || true
+                  exec /busybox/cat
+              tty: true
+              workingDir: /home/jenkins/agent
+              env:
+                - name: PATH
+                  value: /bin:/usr/bin:/busybox:/kaniko:/usr/local/sbin:/usr/local/bin:/usr/sbin:/sbin
+        '''
                 }
             }
-
+        
             steps {
                 unstash 'source-for-kaniko'
-
-                container(name: 'kaniko', shell: '/busybox/sh') {
+        
+                container(name: 'kaniko', shell: '/bin/sh') {
                     withCredentials([usernamePassword(
                         credentialsId: "${REGISTRY_CREDS_ID}",
                         usernameVariable: 'DOCKER_USER',
@@ -97,26 +95,26 @@ spec:
                     )]) {
                         sh '''
                             set -e
-
-                            echo "=== Kaniko container içinde script başladı ==="
+        
+                            echo "=== Kaniko container script started ==="
                             echo "Workspace: $WORKSPACE"
                             pwd
                             ls -la
         
-                            echo "=== app klasörü kontrol ==="
+                            echo "=== Checking app directory ==="
                             ls -la app
         
-                            echo "=== Docker config hazırlanıyor ==="
+                            echo "=== Preparing Docker config ==="
                             mkdir -p /kaniko/.docker
         
                             AUTH=$(printf "%s:%s" "$DOCKER_USER" "$DOCKER_PASS" | base64 | tr -d '\\n')
         
                             printf '{"auths":{"https://index.docker.io/v1/":{"auth":"%s"}}}' "$AUTH" > /kaniko/.docker/config.json
         
-                            echo "=== Dockerfile app context içine kopyalanıyor ==="
+                            echo "=== Copying Dockerfile into app context ==="
                             cp Dockerfile app/Dockerfile
         
-                            echo "=== Kaniko build/push başlıyor ==="
+                            echo "=== Starting Kaniko build and push ==="
                             /kaniko/executor \
                               --context=dir://$WORKSPACE/app \
                               --dockerfile=$WORKSPACE/app/Dockerfile \
@@ -124,7 +122,7 @@ spec:
                               --destination=$REGISTRY/$IMAGE_NAME:latest \
                               --verbosity=info
         
-                            echo "=== Kaniko build/push tamamlandı ==="
+                            echo "=== Kaniko build and push completed ==="
                         '''
                     }
                 }
