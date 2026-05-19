@@ -148,8 +148,8 @@ spec:
                     parameters: [
                         string(name: 'IMAGE_TAG', value: env.IMAGE_TAG)
                     ],
-                    wait: true,
-                    propagate: true
+                    wait: false,
+                    propagate: false
             }
         }
     }
