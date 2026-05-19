@@ -4,6 +4,7 @@ pipeline {
     options {
         skipDefaultCheckout(true)
     }
+
     tools {
         maven 'Maven3'
     }
@@ -12,7 +13,6 @@ pipeline {
         REGISTRY          = 'merveinal1'
         IMAGE_NAME        = 'sample-java-app'
         IMAGE_TAG         = "${env.BUILD_NUMBER}"
-        FULL_IMAGE        = "${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}"
         REGISTRY_CREDS_ID = 'dockerhub-credentials'
     }
 
@@ -30,7 +30,7 @@ pipeline {
                         branch: 'main'
                 }
 
-                stash name: 'source-for-kaniko', includes: 'Dockerfile,app/**'
+                stash name: 'source-for-docker', includes: 'Dockerfile,app/**'
             }
         }
 
@@ -61,42 +61,42 @@ pipeline {
                     cloud 'kubernetes'
                     defaultContainer 'docker'
                     yaml '''
-        apiVersion: v1
-        kind: Pod
-        spec:
-          containers:
-            - name: docker
-              image: docker:25-cli
-              command:
-                - cat
-              tty: true
-              env:
-                - name: DOCKER_HOST
-                  value: tcp://localhost:2375
-                - name: DOCKER_TLS_CERTDIR
-                  value: ""
-        
-            - name: dind
-              image: docker:25-dind
-              securityContext:
-                privileged: true
-              env:
-                - name: DOCKER_TLS_CERTDIR
-                  value: ""
-              volumeMounts:
-                - name: docker-graph-storage
-                  mountPath: /var/lib/docker
-        
-          volumes:
-            - name: docker-graph-storage
-              emptyDir: {}
-        '''
+apiVersion: v1
+kind: Pod
+spec:
+  containers:
+    - name: docker
+      image: docker:25-cli
+      command:
+        - cat
+      tty: true
+      env:
+        - name: DOCKER_HOST
+          value: tcp://localhost:2375
+        - name: DOCKER_TLS_CERTDIR
+          value: ""
+
+    - name: dind
+      image: docker:25-dind
+      securityContext:
+        privileged: true
+      env:
+        - name: DOCKER_TLS_CERTDIR
+          value: ""
+      volumeMounts:
+        - name: docker-graph-storage
+          mountPath: /var/lib/docker
+
+  volumes:
+    - name: docker-graph-storage
+      emptyDir: {}
+'''
                 }
             }
-        
+
             steps {
-                unstash 'source-for-kaniko'
-        
+                unstash 'source-for-docker'
+
                 container('docker') {
                     withCredentials([usernamePassword(
                         credentialsId: "${REGISTRY_CREDS_ID}",
@@ -105,7 +105,9 @@ pipeline {
                     )]) {
                         sh '''
                             set -e
-        
+
+                            FULL_IMAGE="${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}"
+
                             echo "=== Waiting for Docker daemon ==="
                             for i in $(seq 1 60); do
                               if docker info > /dev/null 2>&1; then
@@ -115,46 +117,54 @@ pipeline {
                               echo "Waiting for Docker daemon... $i"
                               sleep 2
                             done
-        
+
                             docker version
-        
+
                             echo "=== Preparing Dockerfile ==="
                             cp Dockerfile app/Dockerfile
-        
+
                             echo "=== Building image ==="
-                            docker build \
-                              -t $REGISTRY/$IMAGE_NAME:$BUILD_NUMBER \
-                              -t $REGISTRY/$IMAGE_NAME:latest \
-                              app
-        
+                            docker build -t "$FULL_IMAGE" app
+
                             echo "=== Logging in to Docker Hub ==="
                             echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
-        
+
                             echo "=== Pushing image ==="
-                            docker push $REGISTRY/$IMAGE_NAME:$BUILD_NUMBER
-                            docker push $REGISTRY/$IMAGE_NAME:latest
-        
+                            docker push "$FULL_IMAGE"
+
                             docker logout
-        
+
                             echo "=== Image pushed successfully ==="
-                            echo "$REGISTRY/$IMAGE_NAME:$BUILD_NUMBER"
-                            echo "$REGISTRY/$IMAGE_NAME:latest"
+                            echo "$FULL_IMAGE"
                         '''
                     }
                 }
             }
         }
+
+        stage('Trigger Deploy') {
+            steps {
+                build job: 'jenkins.deploy',
+                    parameters: [
+                        string(name: 'IMAGE_TAG', value: env.IMAGE_TAG)
+                    ],
+                    wait: true,
+                    propagate: true
+            }
+        }
     }
 
     post {
-        always {
-            cleanWs()
-        }
         success {
-            echo "Image ${FULL_IMAGE} and ${REGISTRY}/${IMAGE_NAME}:latest pushed successfully."
+            echo "Image ${env.REGISTRY}/${env.IMAGE_NAME}:${env.IMAGE_TAG} pushed and deploy job triggered successfully."
         }
+
         failure {
-            echo "Build failed — image was NOT pushed."
+            echo "Build failed — image was NOT pushed or deployment failed."
+        }
+
+        cleanup {
+            cleanWs()
         }
     }
 }
