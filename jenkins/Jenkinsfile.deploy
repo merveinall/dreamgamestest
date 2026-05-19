@@ -22,8 +22,8 @@ spec:
     parameters {
         string(
             name: 'IMAGE_TAG',
-            defaultValue: 'latest',
-            description: 'Docker image tag to deploy'
+            defaultValue: '',
+            description: 'Docker image tag to deploy. Example: Jenkins build number'
         )
     }
 
@@ -34,36 +34,47 @@ spec:
     }
 
     stages {
+        stage('Validate Parameters') {
+            steps {
+                script {
+                    if (!params.IMAGE_TAG?.trim()) {
+                        error 'IMAGE_TAG parameter is required. Do not use latest. Pass the Jenkins build number.'
+                    }
+
+                    echo "Deploying image: ${env.REGISTRY}/${env.IMAGE_NAME}:${params.IMAGE_TAG}"
+                }
+            }
+        }
 
         stage('Prepare kubeconfig') {
             steps {
                 sh '''
                     set -e
-        
+
                     SA_DIR=/var/run/secrets/kubernetes.io/serviceaccount
                     KUBE_SERVER="https://${KUBERNETES_SERVICE_HOST}:${KUBERNETES_SERVICE_PORT}"
                     TOKEN=$(cat ${SA_DIR}/token)
                     CA_CERT=${SA_DIR}/ca.crt
-        
+
                     kubectl config set-cluster in-cluster \
                       --server="${KUBE_SERVER}" \
                       --certificate-authority="${CA_CERT}" \
                       --embed-certs=true \
                       --kubeconfig="${WORKSPACE}/kubeconfig"
-        
+
                     kubectl config set-credentials jenkins \
                       --token="${TOKEN}" \
                       --kubeconfig="${WORKSPACE}/kubeconfig"
-        
+
                     kubectl config set-context in-cluster \
                       --cluster=in-cluster \
                       --user=jenkins \
                       --namespace=apps \
                       --kubeconfig="${WORKSPACE}/kubeconfig"
-        
+
                     kubectl config use-context in-cluster \
                       --kubeconfig="${WORKSPACE}/kubeconfig"
-        
+
                     kubectl --kubeconfig="${WORKSPACE}/kubeconfig" get ns
                 '''
             }
